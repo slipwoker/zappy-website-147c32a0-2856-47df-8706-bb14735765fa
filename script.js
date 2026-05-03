@@ -1513,6 +1513,205 @@ window.onload = function() {
       return { w: 100, h: (contA / imgA) * 100 };
     }
 
+    // FULL-BLEED FIRST-CHILD MEDIA: when the wrapper's parent (the image-wrap)
+    // is the first visible child of a padded card, apply negative margins on all
+    // sides equal to the card's padding so the image extends edge-to-edge of the
+    // card. Without this, every padded card leaves a visible padding "frame"
+    // around the image which users perceive as the image not filling the card.
+    // Applies on BOTH desktop and mobile — this is a layout concern, not a
+    // viewport-specific one. Skipped for hero backgrounds and full-width wrappers.
+    function applyFirstChildBleed(wrapper) {
+      try {
+        if (!wrapper || isHeroBgWrapper(wrapper)) return;
+        var widthMode = wrapper.getAttribute('data-zappy-zoom-wrapper-width-mode');
+        if (widthMode === 'full') return;
+        // Bleed only recognized image-slot wrappers that are direct children
+        // of padded card-like containers. This still handles editor-injected
+        // wrappers (card -> image-wrap -> zappy-inserted-element -> wrapper)
+        // but avoids bleeding media into full section/layout containers.
+        var slotForBleed = null;
+        var slotNode = wrapper.parentElement;
+        for (var slotWalk = 0; slotWalk < 4 && slotNode && slotNode !== document.body; slotWalk++) {
+          var slotNodeClass = (slotNode.className || '').toString().toLowerCase();
+          if (/(image-wrap|image-tile|image-slot|card-image|card-media|media-wrap|portrait-wrap)/.test(slotNodeClass)) {
+            slotForBleed = slotNode;
+            break;
+          }
+          var slotNodeCS = window.getComputedStyle(slotNode);
+          var slotNodeRawClass = (slotNode.className || '').toString();
+          var slotThinAnchor = slotNode.tagName === 'A' && slotNodeCS.display === 'contents';
+          var slotUnclassedDiv = slotNode.tagName === 'DIV' && !slotNodeRawClass.trim();
+          var slotInserted = / zappy-inserted-element |^zappy-inserted-element | zappy-inserted-element$|^zappy-inserted-element$/.test(' ' + slotNodeRawClass + ' ');
+          if (!(slotThinAnchor || slotUnclassedDiv || slotInserted)) break;
+          slotNode = slotNode.parentElement;
+        }
+        var directInsertedForBleed = null;
+        if (!slotForBleed && wrapper.parentElement) {
+          var directParentClass = (wrapper.parentElement.className || '').toString();
+          var directParentIsInserted = / zappy-inserted-element |^zappy-inserted-element | zappy-inserted-element$|^zappy-inserted-element$/.test(' ' + directParentClass + ' ');
+          var directCard = wrapper.parentElement.parentElement;
+          var directCardClass = (directCard && directCard.className || '').toString().toLowerCase();
+          if (directParentIsInserted && /(card|tile|article|post|news|mention|press|journey|philosophy|feature|service)/.test(directCardClass)) {
+            directInsertedForBleed = wrapper.parentElement;
+          }
+        }
+        var bleedTarget = slotForBleed || directInsertedForBleed;
+        var card = bleedTarget && bleedTarget.parentElement;
+        var cardClass = (card && card.className || '').toString().toLowerCase();
+        var isCardLike = /(card|tile|article|post|news|mention|press|journey|philosophy|feature|service)/.test(cardClass);
+        if (!bleedTarget || !card || card === document.body || !isCardLike) return;
+        var firstVisibleChild = null;
+        for (var ci = 0; ci < card.children.length; ci++) {
+          var ch = card.children[ci];
+          var chCS = window.getComputedStyle(ch);
+          if (chCS.display !== 'none' && chCS.visibility !== 'hidden') {
+            firstVisibleChild = ch;
+            break;
+          }
+        }
+        if (firstVisibleChild !== bleedTarget) return;
+        var cardCS = window.getComputedStyle(card);
+        var padT = parseFloat(cardCS.paddingTop) || 0;
+        var padL = parseFloat(cardCS.paddingLeft) || 0;
+        var padR = parseFloat(cardCS.paddingRight) || 0;
+        if (padL <= 0 && padR <= 0 && padT <= 0) return;
+        bleedTarget.style.setProperty('margin-left', '-' + padL + 'px', 'important');
+        bleedTarget.style.setProperty('margin-right', '-' + padR + 'px', 'important');
+        bleedTarget.style.setProperty('margin-top', '-' + padT + 'px', 'important');
+        bleedTarget.style.setProperty('width', 'calc(100% + ' + (padL + padR) + 'px)', 'important');
+        bleedTarget.style.setProperty('max-width', 'calc(100% + ' + (padL + padR) + 'px)', 'important');
+        bleedTarget.style.setProperty('height', 'auto', 'important');
+        bleedTarget.style.setProperty('min-height', '0', 'important');
+        bleedTarget.style.setProperty('max-height', 'none', 'important');
+        bleedTarget.setAttribute('data-zappy-mobile-bleed', '1');
+        wrapper.style.setProperty('width', '100%', 'important');
+        wrapper.style.setProperty('max-width', '100%', 'important');
+        var bleedSW = parseFloat(wrapper.getAttribute('data-zappy-zoom-wrapper-width')) || 0;
+        var bleedSH = parseFloat(wrapper.getAttribute('data-zappy-zoom-wrapper-height')) || 0;
+        if (bleedSW > 0 && bleedSH > 0) {
+          wrapper.style.setProperty('aspect-ratio', bleedSW + '/' + bleedSH, 'important');
+          wrapper.style.setProperty('height', 'auto', 'important');
+        }
+      } catch (_e) {}
+    }
+
+    // FILL CARD-SLOT CONTAINER: stretch the wrapper to fill its parent when
+    // the parent is a designed image-slot container (class includes
+    // image-wrap / image-tile / image-slot / card-image / card-media /
+    // portrait-wrap) AND the wrapper is materially narrower than the parent.
+    // This handles the case where the saved desktop pixel width (e.g. 383px)
+    // is smaller than the rendered card slot at certain viewports / card
+    // variants (e.g. journey-card--short which is 790px wide while the saved
+    // image is 383px), leaving large empty gaps on the sides.
+    // Logos, footer brand marks, and intentionally smaller media are not
+    // matched because their parents do not carry image-slot class names.
+    // Skipped for hero backgrounds and full-width wrappers.
+    function applyCardSlotFill(wrapper, img) {
+      try {
+        if (!wrapper || isHeroBgWrapper(wrapper)) return;
+        var widthMode = wrapper.getAttribute('data-zappy-zoom-wrapper-width-mode');
+        if (widthMode === 'full') return;
+        // Walk UP through editor-injected / "thin" wrappers to find the real
+        // visual image-slot container. We tolerate at most 3 levels of:
+        //   - <a style="display:contents">           (editor link wrap)
+        //   - <div class="zappy-inserted-element">  (editor inserted media)
+        //   - <div> with no class                    (anonymous inline wrap)
+        var node = wrapper.parentElement;
+        var slotEl = null;
+        for (var walk = 0; walk < 3 && node && node !== document.body; walk++) {
+          var nodeClass = (node.className || '').toString().toLowerCase();
+          if (/(image-wrap|image-tile|image-slot|card-image|card-media|media-wrap|portrait-wrap)/.test(nodeClass)) {
+            slotEl = node;
+            break;
+          }
+          var nodeCS = window.getComputedStyle(node);
+          var nodeRawClass = (node.className || '').toString();
+          var isThinAnchor = node.tagName === 'A' && nodeCS.display === 'contents';
+          var isUnclassedDiv = node.tagName === 'DIV' && !nodeRawClass.trim();
+          var isInsertedEl = / zappy-inserted-element |^zappy-inserted-element | zappy-inserted-element$|^zappy-inserted-element$/.test(' ' + nodeRawClass + ' ');
+          if (!(isThinAnchor || isUnclassedDiv || isInsertedEl)) break;
+          node = node.parentElement;
+        }
+        if (!slotEl) return;
+        var slotRect = slotEl.getBoundingClientRect();
+        var wrapRect = wrapper.getBoundingClientRect();
+        var slotCS = window.getComputedStyle(slotEl);
+        var slotWidthGap = slotRect.width - wrapRect.width;
+        var slotHeightGap = wrapRect.height - slotRect.height;
+        if (slotWidthGap <= 4 && !(slotHeightGap > 4 && slotRect.height > 0 && slotCS.overflow !== 'visible')) return;
+        var swStr = wrapper.getAttribute('data-zappy-zoom-wrapper-width');
+        var shStr = wrapper.getAttribute('data-zappy-zoom-wrapper-height');
+        var swNum = parseFloat(swStr) || 0;
+        var shNum = parseFloat(shStr) || 0;
+        wrapper.style.setProperty('width', '100%', 'important');
+        wrapper.style.setProperty('max-width', '100%', 'important');
+        if (slotHeightGap > 4 && slotRect.height > 0 && slotCS.overflow !== 'visible') {
+          wrapper.style.setProperty('height', '100%', 'important');
+          wrapper.style.setProperty('aspect-ratio', 'auto', 'important');
+          wrapper.style.setProperty('padding-bottom', '0', 'important');
+          // Recompute image crop after changing the wrapper from stale saved
+          // portrait dimensions to the real clipped slot height. Otherwise the
+          // image may keep horizontal-overflow-only sizing, making vertical
+          // object-position ineffective.
+          if (img) {
+            var finalRect = wrapper.getBoundingClientRect();
+            var nW = img.naturalWidth || 0;
+            var nH = img.naturalHeight || 0;
+            if (finalRect && finalRect.width > 0 && finalRect.height > 0 && nW > 0 && nH > 0) {
+              var finalCover = coverPercents(nW / nH, finalRect.width / finalRect.height);
+              var zAttr = parseFloat(img.getAttribute('data-zappy-mobile-zoom') || img.getAttribute('data-zappy-zoom') || '1');
+              var finalZoom = (isFinite(zAttr) && zAttr > 0) ? zAttr : 1;
+              var finalW = 100;
+              var finalH = 100;
+              if (finalZoom >= 1) {
+                finalW = finalCover.w * finalZoom;
+                finalH = finalCover.h * finalZoom;
+              } else {
+                var finalT = (finalZoom - 0.5) / 0.5;
+                if (!isFinite(finalT)) finalT = 0;
+                finalT = Math.max(0, Math.min(1, finalT));
+                finalW = 100 + finalT * (finalCover.w - 100);
+                finalH = 100 + finalT * (finalCover.h - 100);
+              }
+              var finalPos = parseObjPos(img.getAttribute('data-zappy-mobile-object-position') || img.getAttribute('data-zappy-object-position') || img.style.objectPosition || '50% 50%');
+              img.style.setProperty('position', 'absolute', 'important');
+              img.style.setProperty('left', ((100 - finalW) * (finalPos.x / 100)) + '%', 'important');
+              img.style.setProperty('top', ((100 - finalH) * (finalPos.y / 100)) + '%', 'important');
+              img.style.setProperty('width', finalW + '%', 'important');
+              img.style.setProperty('height', finalH + '%', 'important');
+              img.style.setProperty('max-width', 'none', 'important');
+              img.style.setProperty('max-height', 'none', 'important');
+              img.style.setProperty('display', 'block', 'important');
+              img.style.setProperty('object-fit', finalZoom < 1 ? 'fill' : 'cover', 'important');
+              img.style.setProperty('margin', '0', 'important');
+            }
+          }
+        } else if (swNum > 0 && shNum > 0) {
+          wrapper.style.setProperty('aspect-ratio', swNum + '/' + shNum, 'important');
+          wrapper.style.setProperty('height', 'auto', 'important');
+        }
+        wrapper.setAttribute('data-zappy-card-slot-fill', '1');
+        // Also stretch any intermediate .zappy-inserted-element ancestors up
+        // to the slot, so an editor-inserted media wrapper with a saved
+        // desktop pixel width doesn't constrain the wrapper we just stretched
+        // to 100%.
+        var intermediate = wrapper.parentElement;
+        for (var iw = 0; iw < 3 && intermediate && intermediate !== slotEl; iw++) {
+          var iwRawClass = (intermediate.className || '').toString();
+          var iwIsInserted = / zappy-inserted-element |^zappy-inserted-element | zappy-inserted-element$|^zappy-inserted-element$/.test(' ' + iwRawClass + ' ');
+          if (iwIsInserted) {
+            intermediate.style.setProperty('width', '100%', 'important');
+            intermediate.style.setProperty('max-width', '100%', 'important');
+            intermediate.style.setProperty('height', 'auto', 'important');
+            intermediate.style.setProperty('min-height', '0', 'important');
+            intermediate.style.setProperty('max-height', 'none', 'important');
+            intermediate.setAttribute('data-zappy-inserted-stretched', '1');
+          }
+          intermediate = intermediate.parentElement;
+        }
+      } catch (_fillErr) {}
+    }
+
     function applyZoom(wrapper, img) {
       var zoom = parseFloat(img.getAttribute('data-zappy-zoom')) || 1;
       if (!(zoom > 0)) zoom = 1;
@@ -1536,41 +1735,41 @@ window.onload = function() {
 
         var _sW = parseFloat(wrapper.getAttribute('data-zappy-zoom-wrapper-width')) || 0;
         var _sH = parseFloat(wrapper.getAttribute('data-zappy-zoom-wrapper-height')) || 0;
-        if (_sW > 0 && _sH > 0) {
+        var hasMobileOverrides = mPos || (isFinite(mZoom) && mZoom > 0);
+
+        if (hasMobileOverrides && _sW > 0 && _sH > 0) {
           wrapper.style.setProperty('padding-bottom', '0', 'important');
           wrapper.style.setProperty('aspect-ratio', _sW + '/' + _sH, 'important');
           wrapper.style.setProperty('height', 'auto', 'important');
-        }
 
-        function applyMobileZoomCrop(_img, _wrapper, _effPos, _effZoom) {
-          var rect = _wrapper.getBoundingClientRect();
-          if (!rect || !rect.width || !rect.height) return;
-          var nW = _img.naturalWidth || 0, nH = _img.naturalHeight || 0;
-          if (!(nW > 0 && nH > 0)) return;
-          var imgA = nW / nH;
-          var contA = rect.width / rect.height;
-          var cover = coverPercents(imgA, contA);
-          var wP = 100, hP = 100;
-          if (_effZoom >= 1) { wP = cover.w * _effZoom; hP = cover.h * _effZoom; }
-          else { var t2 = (_effZoom - 0.5) / 0.5; if (!isFinite(t2)) t2 = 0; t2 = Math.max(0, Math.min(1, t2)); wP = 100 + t2 * (cover.w - 100); hP = 100 + t2 * (cover.h - 100); }
-          var p2 = parseObjPos(_effPos);
-          var lP = (100 - wP) * (p2.x / 100);
-          var tP = (100 - hP) * (p2.y / 100);
-          _img.style.setProperty('position', 'absolute', 'important');
-          _img.style.setProperty('left', lP + '%', 'important');
-          _img.style.setProperty('top', tP + '%', 'important');
-          _img.style.setProperty('width', wP + '%', 'important');
-          _img.style.setProperty('height', hP + '%', 'important');
-          _img.style.setProperty('max-width', 'none', 'important');
-          _img.style.setProperty('max-height', 'none', 'important');
-          _img.style.setProperty('display', 'block', 'important');
-          _img.style.setProperty('object-fit', _effZoom < 1 ? 'fill' : 'cover', 'important');
-          _img.style.setProperty('margin', '0', 'important');
-        }
+          function applyMobileZoomCrop(_img, _wrapper, _effPos, _effZoom) {
+            var rect = _wrapper.getBoundingClientRect();
+            if (!rect || !rect.width || !rect.height) return;
+            var nW = _img.naturalWidth || 0, nH = _img.naturalHeight || 0;
+            if (!(nW > 0 && nH > 0)) return;
+            var imgA = nW / nH;
+            var contA = rect.width / rect.height;
+            var cover = coverPercents(imgA, contA);
+            var wP = 100, hP = 100;
+            if (_effZoom >= 1) { wP = cover.w * _effZoom; hP = cover.h * _effZoom; }
+            else { var t2 = (_effZoom - 0.5) / 0.5; if (!isFinite(t2)) t2 = 0; t2 = Math.max(0, Math.min(1, t2)); wP = 100 + t2 * (cover.w - 100); hP = 100 + t2 * (cover.h - 100); }
+            var p2 = parseObjPos(_effPos);
+            var lP = (100 - wP) * (p2.x / 100);
+            var tP = (100 - hP) * (p2.y / 100);
+            _img.style.setProperty('position', 'absolute', 'important');
+            _img.style.setProperty('left', lP + '%', 'important');
+            _img.style.setProperty('top', tP + '%', 'important');
+            _img.style.setProperty('width', wP + '%', 'important');
+            _img.style.setProperty('height', hP + '%', 'important');
+            _img.style.setProperty('max-width', 'none', 'important');
+            _img.style.setProperty('max-height', 'none', 'important');
+            _img.style.setProperty('display', 'block', 'important');
+            _img.style.setProperty('object-fit', _effZoom < 1 ? 'fill' : 'cover', 'important');
+            _img.style.setProperty('margin', '0', 'important');
+          }
 
-        var effZoom = (isFinite(mZoom) && mZoom > 0) ? mZoom : zoom;
-        var effPos = mPos || img.getAttribute('data-zappy-object-position') || img.style.objectPosition || '50% 50%';
-        if (_sW > 0 && _sH > 0) {
+          var effZoom = (isFinite(mZoom) && mZoom > 0) ? mZoom : zoom;
+          var effPos = mPos || img.getAttribute('data-zappy-object-position') || img.style.objectPosition || '50% 50%';
           applyMobileZoomCrop(img, wrapper, effPos, effZoom);
           if (!(img.complete && img.naturalWidth > 0)) {
             img.addEventListener('load', function _onLoad() {
@@ -1578,17 +1777,49 @@ window.onload = function() {
               try { applyMobileZoomCrop(img, wrapper, effPos, effZoom); } catch(e) {}
             });
           }
+        } else if (_sW > 0 && _sH > 0) {
+          // No mobile overrides but the wrapper has a saved desktop aspect ratio.
+          // Preserve that crop frame at mobile width and use object-fit:cover with the
+          // saved object-position. This keeps the visual layout consistent with desktop
+          // (same crop, just narrower) without applying the percentage-offset math that
+          // produced "image overflows wrapper" rendering on the previous build.
+          var _savedObjPos = img.getAttribute('data-zappy-object-position') ||
+                             img.style.objectPosition || '50% 50%';
+          wrapper.style.setProperty('aspect-ratio', _sW + '/' + _sH, 'important');
+          wrapper.style.setProperty('padding-bottom', '0', 'important');
+          wrapper.style.setProperty('height', 'auto', 'important');
+          img.style.setProperty('position', 'absolute', 'important');
+          img.style.setProperty('top', '0', 'important');
+          img.style.setProperty('left', '0', 'important');
+          img.style.setProperty('width', '100%', 'important');
+          img.style.setProperty('height', '100%', 'important');
+          img.style.setProperty('max-width', '100%', 'important');
+          img.style.setProperty('max-height', 'none', 'important');
+          img.style.setProperty('display', 'block', 'important');
+          img.style.setProperty('object-fit', 'cover', 'important');
+          img.style.setProperty('object-position', _savedObjPos, 'important');
+          img.style.removeProperty('right');
+          img.style.removeProperty('bottom');
+          img.style.setProperty('margin', '0', 'important');
         } else {
+          // Legacy wrappers without saved dimensions — natural-aspect responsive image.
+          wrapper.style.setProperty('aspect-ratio', 'auto', 'important');
+          wrapper.style.setProperty('padding-bottom', '0', 'important');
+          wrapper.style.setProperty('height', 'auto', 'important');
           img.style.setProperty('position', 'relative', 'important');
           img.style.setProperty('width', '100%', 'important');
           img.style.setProperty('height', 'auto', 'important');
           img.style.setProperty('max-width', '100%', 'important');
+          img.style.setProperty('max-height', '300px', 'important');
           img.style.setProperty('display', 'block', 'important');
           img.style.setProperty('object-fit', 'cover', 'important');
           img.style.removeProperty('left');
           img.style.removeProperty('top');
           img.style.setProperty('margin', '0', 'important');
         }
+
+        applyFirstChildBleed(wrapper);
+        applyCardSlotFill(wrapper, img);
         return;
       }
 
@@ -1608,6 +1839,8 @@ window.onload = function() {
         img.style.setProperty('object-fit', 'cover', 'important');
         img.style.setProperty('display', 'block', 'important');
         img.style.setProperty('margin', '0', 'important');
+        applyFirstChildBleed(wrapper);
+        applyCardSlotFill(wrapper, img);
         return;
       }
 
@@ -1621,6 +1854,8 @@ window.onload = function() {
       if (existingPos === 'absolute' && existingW.indexOf('%') !== -1 && zoom > 1) {
         wrapper.style.setProperty('overflow', 'hidden', 'important');
         wrapper.style.setProperty('position', 'relative', 'important');
+        applyFirstChildBleed(wrapper);
+        applyCardSlotFill(wrapper, img);
         return;
       }
 
@@ -1662,6 +1897,8 @@ window.onload = function() {
       img.style.setProperty('display', 'block', 'important');
       img.style.setProperty('object-fit', zoom < 1 ? 'fill' : 'cover', 'important');
       img.style.setProperty('margin', '0', 'important');
+      applyFirstChildBleed(wrapper);
+      applyCardSlotFill(wrapper, img);
     }
 
     function fixOrphanedZoomImages() {
