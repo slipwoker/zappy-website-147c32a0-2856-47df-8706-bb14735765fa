@@ -622,11 +622,7 @@ textarea::placeholder {
   color: white;
 }
 
-@media (min-width: 769px) {
-  .whatsapp-float {
-    display: none !important;
-  }
-}
+
 
 @media (max-width: 768px) {
   .section {
@@ -7303,14 +7299,7 @@ html[dir="rtl"] .footer-contact li > a { flex-direction: row !important; }
 }
 
 /* Hide WhatsApp float button on desktop (mobile-only) */
-@media (min-width: 769px) {
-  .whatsapp-float {
-    display: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-  }
-}
+
 
 /* Footer contact alignment fix */
 .footer-contact li > a { display: flex; align-items: flex-start; gap: inherit; }
@@ -9434,10 +9423,15 @@ body.zappy-edit-mode .zappy-editable-video-bg {
 
 
 
+
+
+
+
+
 /* WIDGET-DISPLAY-START */
 .whatsapp-float { left: 20px; right: auto; }
-@media (max-width: 768px) { .whatsapp-float { display: flex !important; } }
-@media (min-width: 769px) { .whatsapp-float { display: flex !important; } }
+@media (max-width: 768px) { .whatsapp-float { display: flex !important; visibility: visible !important; opacity: 1 !important; } }
+@media (min-width: 769px) { .whatsapp-float { display: flex !important; visibility: visible !important; opacity: 1 !important; } }
 #mic-access-tool-general-button, .mic-access-tool-general-button,
 #mic-init-access-tool .mic-access-tool-general-button,
 #mic-init-access-tool #mic-access-tool-general-button,
