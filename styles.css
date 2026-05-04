@@ -9432,6 +9432,8 @@ body.zappy-edit-mode .zappy-editable-video-bg {
 
 
 
+
+
 /* WIDGET-DISPLAY-START */
 .whatsapp-float { left: 20px; right: auto; }
 @media (max-width: 768px) { .whatsapp-float { display: flex !important; } }
@@ -9444,13 +9446,17 @@ body.zappy-edit-mode .zappy-editable-video-bg {
   #mic-access-tool-general-button, .mic-access-tool-general-button,
   #mic-init-access-tool .mic-access-tool-general-button,
   #mic-init-access-tool #mic-access-tool-general-button,
-  ._access-icon { display: flex !important; }
+  ._access-icon, #mic-access-tool-box, .mic-access-tool-box,
+  #mic-init-access-tool #mic-access-tool-box, div[id*="mic-access-tool-box"],
+  ._access-menu { display: none !important; }
 }
 @media (min-width: 769px) {
   #mic-access-tool-general-button, .mic-access-tool-general-button,
   #mic-init-access-tool .mic-access-tool-general-button,
   #mic-init-access-tool #mic-access-tool-general-button,
-  ._access-icon { display: flex !important; }
+  ._access-icon, #mic-access-tool-box, .mic-access-tool-box,
+  #mic-init-access-tool #mic-access-tool-box, div[id*="mic-access-tool-box"],
+  ._access-menu { display: none !important; }
 }
 /* WIDGET-DISPLAY-END */
 
