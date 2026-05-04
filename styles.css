@@ -9430,14 +9430,16 @@ body.zappy-edit-mode .zappy-editable-video-bg {
 
 
 
+
+
 /* WIDGET-DISPLAY-START */
-.whatsapp-float { left: 20px; right: auto; }
+.whatsapp-float { right: 20px; left: auto; }
 @media (max-width: 768px) { .whatsapp-float { display: flex !important; visibility: visible !important; opacity: 1 !important; } }
-@media (min-width: 769px) { .whatsapp-float { display: flex !important; visibility: visible !important; opacity: 1 !important; } }
+@media (min-width: 769px) { .whatsapp-float { display: none !important; visibility: hidden !important; opacity: 0 !important; } }
 #mic-access-tool-general-button, .mic-access-tool-general-button,
 #mic-init-access-tool .mic-access-tool-general-button,
 #mic-init-access-tool #mic-access-tool-general-button,
-._access-icon { right: 20px !important; left: auto !important; }
+._access-icon { left: 20px !important; right: auto !important; }
 @media (max-width: 768px) {
   #mic-access-tool-general-button, .mic-access-tool-general-button,
   #mic-init-access-tool .mic-access-tool-general-button,
